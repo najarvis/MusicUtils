@@ -1,3 +1,4 @@
+import sys
 from typing import Union
 
 import random
@@ -29,7 +30,7 @@ minor_pentatonic_scale = [m3, M2, M2, m3, M2] # Notice how this is the same as t
 # Could be written as `minor_pentatonic_scale = major_pentatonic_scale[4:] + major_pentatonic_scale[:4]`
 
 HEPATONIC_MODE_OFFSETS = {
-    "ionian":      0,
+    "ionian":     0,
     "dorian":     1,
     "phrygian":   2,
     "lydian":     3,
@@ -68,18 +69,45 @@ def get_scale(starting_note: Union[str, int], scale: list, preference: str="") -
         arr.append(get_preferred_note(note, preference))
     return arr
 
-def get_formatted_scale(starting_note: Union[str, int], scale: list) -> list:
+"""Does not always produce the correct results, use get_formatted_scale"""
+def get_formatted_scale_OLD(starting_note: Union[str, int], intervals: list) -> tuple[list, bool]:
         # Since we don't want to display two of the same note names in the scale
         # (i.e C and C#), see if it makes more sense to display with sharps or flats.
-        scale1 = get_scale(starting_note, scale, "#")
-        scale2 = get_scale(starting_note, scale, "b")
+        scale1 = get_scale(starting_note, intervals, "#")
+        scale2 = get_scale(starting_note, intervals, "b")
         scale1_uniques = len(set(x[0] for x in scale1)) # Unique note names ("C#" and "C" both become C)
         scale2_uniques = len(set(x[0] for x in scale2))
-        warning = len(scale) not in [scale1_uniques, scale2_uniques]
+        warning = len(intervals) not in [scale1_uniques, scale2_uniques]
         if scale1_uniques >= scale2_uniques:
-            return scale1, warning
+            return (scale1, warning)
 
-        return scale2, warning
+        return (scale2, warning)
+
+"""Instead of forcing all the letters in the scale to be either sharp or flat, we can build the scale one note at a time, like we would in real life"""
+def get_formatted_scale(starting_note: Union[str, int], intervals: list) -> tuple[list, bool]:
+    scale = [starting_note]
+    current_note_index = find_note_index(starting_note)
+    for interval in intervals:
+        current_note_index += interval
+        next_note = NOTES[current_note_index % len(NOTES)]
+        # If the note only has one name, that makes it easy for us
+        if not "/" in next_note:
+            scale += [next_note]
+            continue
+
+        options = next_note.split("/")
+        # Unique letter names
+        unique_letters_in_scale = set(x[0] for x in scale)
+
+        # If the first letter name is already in the scale and the EXACT NOTE isn't already in the scale
+        # (i.e. the root when placing the 7th) Add the second letter name.
+        if options[0][0] in unique_letters_in_scale and options[0] not in scale:
+            scale += [options[1]]
+        else:
+            scale += [options[0]]
+
+    warning = len(set(x[0] for x in scale)) != len(intervals)
+    return (scale, warning)
 
 """Given an entry in the NOTES list get a single note representation, with an optional preference for flat/sharp"""
 def get_preferred_note(full_note: str, preference: str="") -> str:
@@ -186,6 +214,7 @@ def mode_quiz(pentatonic = False):
         random_mode_num = offsets[random_mode]
         mode_intervals = base_scale[random_mode_num:] + base_scale[:random_mode_num]
 
+        # For now, just try the modes starting on C
         scale, warning = get_formatted_scale("C", mode_intervals)
 
         print("What mode is: ")
@@ -194,6 +223,29 @@ def mode_quiz(pentatonic = False):
             print("Warning: Possibly not a valid scale/mode")
         choice = input()
         print("It was: {}".format(random_mode))
+
+"""List out all the modes starting on each possible note"""
+def list_modes(file_to_save=sys.stdout):
+    for pitch in NOTES:
+        # Print out both notes in a pair like A#/Bb
+        for note in pitch.split('/'):
+            for mode_name in HEPATONIC_MODE_OFFSETS:
+                offset = HEPATONIC_MODE_OFFSETS[mode_name]
+                mode_intervals = major_scale[offset:] + major_scale[:offset]
+                modal_scale, warning = get_formatted_scale(note, mode_intervals)
+                modal_scale_pretty = [x.rjust(2, " ") for x in modal_scale]
+                print("{} {}{}\t{}".format(
+                    note.ljust(2, " "),
+                    mode_name.ljust(12, '-'),
+                    ", ".join(modal_scale_pretty),
+                    " (not a valid key)" if warning else ""
+                ),
+                file=file_to_save)
+            print(file=file_to_save)
+
+def save_modes():
+    with open("mode_list.txt", 'w') as f:
+        list_modes(f)
 
 """Basic quiz, which asks about notes at a random fret on a random string."""
 def quiz(bass_mode = True):
